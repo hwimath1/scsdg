@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>연립방정식의 풀이(1)</title>
+  <!-- MathJax (필요 없으면 제거 가능) -->
+  <script
+    src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"
+    defer
+  ></script>
+  <style>
+    body {
+      background-color: #ffffff;
+      color: #000000;
+      margin: 0;
+      padding: 0;
+      font-family: sans-serif;
+    }
+    .centered-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .hidden {
+      display: none;
+    }
+    .energy-bar {
+      width: 80%;
+      height: 10px;
+      background-color: #000000;
+      margin: 10px auto;
+      position: relative;
+    }
+    .energy-bar-fill {
+      height: 100%;
+      background-color: #ffffff;
+      transition: width 0.2s linear;
+    }
+    .difficulty-button,
+    .answer-button,
+    #startGameBtn,
+    #submitNameBtn,
+    #nextBtn,
+    #scoreSubmitBtn {
+      background-color: #000000;
+      color: #ffffff;
+      border: 1px solid #000000;
+      padding: 8px 15px;
+      margin: 5px;
+      cursor: pointer;
+    }
+    .difficulty-button:hover,
+    .answer-button:hover,
+    #startGameBtn:hover,
+    #submitNameBtn:hover,
+    #nextBtn:hover,
+    #scoreSubmitBtn:hover {
+      background-color: #ffffff;
+      color: #000000;
+      border: 1px solid #000000;
+    }
+    .question-container {
+      margin: 20px auto;
+      width: 80%;
+      max-width: 800px;
+      border: 1px solid #000000;
+      padding: 10px;
+    }
+    .score-area,
+    .lives-area,
+    .time-area {
+      margin: 10px;
+    }
+    .answer-container {
+      margin: 15px 0;
+    }
+    #playerNameInput {
+      font-size: 16px;
+      padding: 5px;
+    }
+    #response {
+      white-space: pre-wrap;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+
+<!-- 환영 및 이름 입력 화면 -->
+<div id="welcomeScreen" class="centered-container" style="margin-top:50px;">
+  <h1>연립방정식의 풀이(1)</h1>
+  <label>이름을 입력하세요:</label>
+  <input type="text" id="playerNameInput" placeholder="이름" />
+  <br />
+  <button id="submitNameBtn">이름 등록</button>
+</div>
+
+<!-- 난이도 선택 화면 -->
+<div id="difficultyScreen" class="centered-container hidden">
+  <h2>난이도를 선택하세요</h2>
+  <button class="difficulty-button" data-level="top">최상 (20초, 문제당 20점)</button>
+  <button class="difficulty-button" data-level="high">상 (30초, 문제당 15점)</button>
+  <button class="difficulty-button" data-level="mid">중 (40초, 문제당 13점)</button>
+  <button class="difficulty-button" data-level="low">하 (시간제한 없음, 문제당 10점)</button>
+</div>
+
+<!-- 게임 화면 -->
+<div id="gameScreen" class="hidden">
+  <div class="score-area">
+    <span id="scoreLabel">점수: 0</span>
+  </div>
+  <div class="lives-area">
+    <span id="livesLabel">남은 기회 : 3</span>
+  </div>
+  <div class="time-area">
+    <span id="timeLabel">전체 경과 시간: 0초</span>
+  </div>
+
+  <div id="energyBarContainer" class="energy-bar hidden">
+    <div id="energyBarFill" class="energy-bar-fill"></div>
+  </div>
+
+  <div id="questionArea" class="question-container">
+    <div id="questionText"></div>
+    <div id="choicesArea" class="answer-container"></div>
+    <div id="feedback" style="margin:10px 0; font-weight:bold;"></div>
+    <!-- "다음문제" 버튼은 정답 또는 오답 확인 후에만 활성화됩니다. -->
+    <button id="nextBtn" class="hidden">다음 문제</button>
+  </div>
+</div>
+
+<!-- 게임 종료 화면 -->
+<div id="endScreen" class="centered-container hidden" style="margin-top:50px;">
+  <h2 id="endTitle"></h2>
+  <p id="endMessage"></p>
+  <button id="scoreSubmitBtn">점수 전송</button>
+  <div id="response"></div>
+</div>
+
+<script>
+/* 
+  ※ 참고: 문제 내용은 모두 올바르게 작성되어 있어 수정할 필요가 없습니다.
+  ※ 각 문제를 풀고 나면 정답/오답이 확인된 후에만 "다음 문제" 버튼을 눌러야 다음 문제로 넘어가도록 구현되어 있습니다.
+*/
+
+/*------------------------------------------------
+  점수 전송을 위한 함수 (API 콜)
+------------------------------------------------*/
+function saveData(game, name, score, elapsedTime) {
+  const FUNCTION_URL = "https://us-central1-record-f420d.cloudfunctions.net/report";
+  const requestData = {
+    game,
+    name,
+    score: parseInt(score, 10),
+    elapsedTime: parseInt(elapsedTime, 10)
+  };
+
+  fetch(FUNCTION_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(requestData)
+  })
+  .then(response => {
+    return response.json().then(responseData => {
+      if (response.ok) {
+        document.getElementById('response').innerText =
+          '성공: ' + JSON.stringify(responseData, null, 2);
+      } else {
+        document.getElementById('response').innerText =
+          '오류: ' + JSON.stringify(responseData, null, 2);
+      }
+    });
+  })
+  .catch(error => {
+    console.error('요청 실패:', error);
+    document.getElementById('response').innerText =
+      '네트워크 오류: ' + error.message;
+  });
+}
+
+/*------------------------------------------------
+  문제 데이터 (문제 내용은 수정 없이 그대로 사용)
+------------------------------------------------*/
+const QUESTIONS = [
+  {
+    question: "다음 연립방정식을 풀어 (x,y)를 구하시오. ( x = y - 1,  y = 4x - 2 )",
+    choices: [
+      "(0,1)",
+      "(2,3)",
+      "(3,4)",
+      "(1,2)"
+    ],
+    answer: 3
+  },
+  {
+    question: "다음 조건을 만족하는 (x,y)를 구하시오. ( x = 3y - 1,  x = 3 - y )",
+    choices: [
+      "(2,1)",
+      "(3,0)",
+      "(1,1)",
+      "(4,1)"
+    ],
+    answer: 0
+  },
+  {
+    question: "다음 연립방정식을 풀어 (x,y)를 구하시오. ( 2x - 4y = 0,  x = 3y + 1 )",
+    choices: [
+      "(2,1)",
+      "(-2,-1)",
+      "(0,2)",
+      "(1,-3)"
+    ],
+    answer: 1
+  },
+  {
+    question: "다음 연립방정식에서 (x,y)를 구하시오. ( 2x - y = 2,  y = x + 1 )",
+    choices: [
+      "(2,3)",
+      "(4,3)",
+      "(3,4)",
+      "(1,2)"
+    ],
+    answer: 2
+  },
+  {
+    question: "다음 연립방정식을 풀어 (x,y)를 구하시오. ( 3x - 2y = 5,  x + 2y = -1 )",
+    choices: [
+      "(0,-1)",
+      "(1,-1)",
+      "(2,1)",
+      "(3,-1)"
+    ],
+    answer: 1
+  },
+  {
+    question: "아래 연립방정식 ( 3x - y = 3,  2x + y = 2 ) 의 해 (x,y)를 구하세요.",
+    choices: [
+      "(0,1)",
+      "(2,-1)",
+      "(1,0)",
+      "(1,2)"
+    ],
+    answer: 2
+  },
+  {
+    question: "아래 식을 만족하는 (x,y)를 구하시오. ( 4x - 2y = 1,  3x + y = -3 )",
+    choices: [
+      "(-1/2, -3/2)",
+      "(1/2, -3/2)",
+      "(-3/2, -1/2)",
+      "(-1/2, 3/2)"
+    ],
+    answer: 0
+  },
+  {
+    question: "다음 연립방정식을 풀면? ( x - 2y = 2,  -2x + y = -1 )",
+    choices: [
+      "(1,-1)",
+      "(2,1)",
+      "(0,1)",
+      "(0,-1)"
+    ],
+    answer: 3
+  },
+  {
+    question: "아래 조건에서 (x,y,z)의 값을 구하시오. x+y+z=6, 4x+y-z=10, 3x-2y+z=1",
+    choices: [
+      "(3,4,-1)",
+      "(2,3,1)",
+      "(4,2,0)",
+      "(1,5,0)"
+    ],
+    answer: 1
+  },
+  {
+    question: "이 연립방정식 ( x+y+z=3,  2x+y-z=6,  3x-2y+z=-4 ) 의 해를 구하시오.",
+    choices: [
+      "(2,1,0)",
+      "(1,2,3)",
+      "(0,0,3)",
+      "(1,3,-1)"
+    ],
+    answer: 3
+  },
+  {
+    question: "다음 ( 3x+2y+z=12,  x+y-z=6,  x-2y+z=-2 ) 에서 (x,y,z)는?",
+    choices: [
+      "(3,2,-1)",
+      "(4,2,1)",
+      "(3,3,-2)",
+      "(2,1,0)"
+    ],
+    answer: 0
+  },
+  {
+    question: "연립방정식 ( x+y=7,  y+z=10,  z+x=9 ) 의 해 (x,y,z)를 구하시오.",
+    choices: [
+      "(4,3,5)",
+      "(2,5,6)",
+      "(3,4,6)",
+      "(3,4,5)"
+    ],
+    answer: 2
+  },
+  {
+    question: "아래 조건에서 (x,y,z)의 값을 구하시오. x+y=7, y+z=5, z+x=8 을 만족하는 (x,y,z)는?",
+    choices: [
+      "(3,2,5)",
+      "(4,2,4)",
+      "(5,3,2)",
+      "(5,2,3)"
+    ],
+    answer: 3
+  },
+  {
+    question: "연립방정식 ( x+3y=6,  3y+2z=-1,  2z+x=-1 ) 의 해는?",
+    choices: [
+      "(3,1,-2)",
+      "(2,1,-3)",
+      "(3,2,-1)",
+      "(4,1,-2)"
+    ],
+    answer: 0
+  },
+  {
+    question: "다음 조건: x+y=5, y+z=6, z+x=7 에서 (x,y,z)를 구하시오.",
+    choices: [
+      "(3,4,2)",
+      "(3,2,4)",
+      "(4,2,3)",
+      "(2,3,4)"
+    ],
+    answer: 1
+  },
+  {
+    question: "아래 조건 x+y=y+z-3=z+x+3=2 를 만족하는 (x,y,z)는?",
+    choices: [
+      "(-2,1,4)",
+      "(2,-4,1)",
+      "(1,4,-2)",
+      "(-2,4,1)"
+    ],
+    answer: 3
+  },
+  {
+    question: "다음 x+y-1=y+z-5=z+x-3=3 식을 만족하는 (x,y,z)를 구하시오.",
+    choices: [
+      "(3,1,5)",
+      "(1,3,5)",
+      "(2,2,5)",
+      "(1,4,4)"
+    ],
+    answer: 1
+  },
+  {
+    question: "( (x+y)/2 = (y+z)/3 = (z+x)/4 = 2 ) 를 만족하는 (x,y,z)는?",
+    choices: [
+      "(3,1,5)",
+      "(3,2,4)",
+      "(2,2,4)",
+      "(2,1,5)"
+    ],
+    answer: 0
+  },
+  {
+    question: "( (x+y)/3 = (y+z)/5 = (z+x)/6 = 1 ) 를 만족할 때, (x,y,z)는?",
+    choices: [
+      "(1,2,4)",
+      "(2,4,1)",
+      "(2,1,4)",
+      "(3,1,3)"
+    ],
+    answer: 2
+  },
+
+  /* 정답이 두 개인 문제들 */
+  {
+    // 원래 정답: (3,1),(-1,-3)
+    question: "연립방정식 ( x-y=2,  x^2+y^2=10 ) 의 해를 모두 고르시오.",
+    choices: [
+      "(2,1),(2,-1)",
+      "(3,1),(-1,-3)",
+      "(2,2),(0,4)",
+      "해 없음"
+    ],
+    answer: 1
+  },
+  {
+    // 정답: (1,-2),(2,-1)
+    question: "( x-y=3,  x^2+y^2=5 ) 에서 가능한 (x,y)는?",
+    choices: [
+      "(1,-2),(2,-1)",
+      "(1,2),(2,1)",
+      "(0,-2),(2,0)",
+      "해 없음"
+    ],
+    answer: 0
+  },
+  {
+    // 정답: (0,5),(4,-3)
+    question: "( 2x+y=5,  x^2+y^2=25 ) 의 해를 모두 구하시오.",
+    choices: [
+      "(0,-5),(4,3)",
+      "(1,4),(5,0)",
+      "해 없음",
+      "(0,5),(4,-3)"
+    ],
+    answer: 3
+  },
+  {
+    // 정답: (1,-1),(3,-5)
+    question: "( 2x+y=1,  3x^2-y^2=2 ) 의 해를 모두 구하시오.",
+    choices: [
+      "(1,-1),(3,-5)",
+      "(1,1),(3,5)",
+      "(2,-1),(4,-5)",
+      "해 없음"
+    ],
+    answer: 0
+  },
+  {
+    // 정답: (1,2),(-2,-1)
+    question: "( y-x=1,  x^2+y^2=5 ) 에서 (x,y)를 구하시오.",
+    choices: [
+      "(1,2),(-2,-1)",
+      "(1,-2),(2,-1)",
+      "(0,1),(-1,0)",
+      "해 없음"
+    ],
+    answer: 0
+  },
+  {
+    // 정답: (-3,1),(-5,3)
+    question: "( x+y=-2,  x^2-2y^2=7 ) 에서 (x,y)의 해를 모두 구하시오.",
+    choices: [
+      "(-3,1),(-5,3)",
+      "(-3,-1),(-5,-3)",
+      "(0,-2),(-2,0)",
+      "해 없음"
+    ],
+    answer: 0
+  },
+  {
+    // 정답: ((11/3),(11/9)),(-3,-1)
+    question: "( x-3y=0,  x^2-2y=11 ) 의 해를 모두 찾으시오.",
+    choices: [
+      "((11/3),(11/9)),(-3,-1)",
+      "((10/3),(10/9)),(-4,-1)",
+      "((8/3),(8/9)),(-3,-2)",
+      "해 없음"
+    ],
+    answer: 0
+  },
+  {
+    // 정답: (3,1),(-5,-7)
+    question: "( 2x-y=1,  3x^2-y^2=-6 ) 의 해 (x,y)를 모두 구하면?",
+    choices: [
+      "(5,9),(-1,-3)",
+      "(5,-9),(-1,3)",
+      "(6,10),(0,-2)",
+      "해 없음"
+    ],
+    answer: 0
+  },
+  {
+    // 정답: (3,1),(1,3)
+    question: "( x+y=4,  x^2+xy+y^2=13 ) 의 해를 모두 구하시오.",
+    choices: [
+      "(3,1),(1,3)",
+      "(3,-1),(1,-3)",
+      "(4,0),(0,4)",
+      "해 없음"
+    ],
+    answer: 0
+  },
+  {
+    // 정답: ((-4-2√10),(3+√10)),((-4+2√10),(3-√10))
+    question: "( x+2y=2,  x^2+xy-y^2=5 ) 을 만족하는 (x,y)를 모두 골라라.",
+    choices: [
+      "((-4-2√10),(3+√10)),((-4+2√10),(3-√10))",
+      "((-3-2√10),(2+√10)),((-3+2√10),(2-√10))",
+      "(-2,5),(3,-1)",
+      "해 없음"
+    ],
+    answer: 0
+  },
+  {
+    // 정답: (3,1),(-5,-7)
+    question: "( x-y=2,  x^2+xy-y^2=11 ) 에서 가능한 해 (x,y)는?",
+    choices: [
+      "(3,1),(-5,-7)",
+      "(3,-1),(-5,7)",
+      "(4,1),(-5,-6)",
+      "해 없음"
+    ],
+    answer: 0
+  },
+  {
+    // 정답: (-1,1),(-2,0)
+    question: "( x-y=-2,  x^2-xy+2y^2=4 ) 의 해는?",
+    choices: [
+      "(-1,1),(-2,0)",
+      "(-1,-1),(-2,1)",
+      "(0,1),(-1,2)",
+      "해 없음"
+    ],
+    answer: 0
+  },
+  {
+    // 정답: (-3,-2),(3,1)
+    question: "( x-2y=1,  x^2-xy+y^2=7 ) 에서 (x,y)를 모두 찾으시오.",
+    choices: [
+      "(-3,-2),(3,1)",
+      "(-3,2),(3,-1)",
+      "(-1,-2),(2,1)",
+      "해 없음"
+    ],
+    answer: 0
+  },
+  {
+    // 정답: (2,2),(-6,10)
+    question: "( x+y=4,  x^2-xy-y^2=-4 ) 의 해는?",
+    choices: [
+      "(2,2),(-6,10)",
+      "(2,-2),(-6,-10)",
+      "(3,1),(-3,1)",
+      "해 없음"
+    ],
+    answer: 0
+  },
+  {
+    // 정답: (1,1),(2,-1)
+    question: "( 2x+y=3,  x^2+xy+y^2=3 ) 에서 (x,y)를 구하시오.",
+    choices: [
+      "(1,1),(2,-1)",
+      "(1,-1),(2,1)",
+      "(0,0),(1,-2)",
+      "해 없음"
+    ],
+    answer: 0
+  },
+  {
+    // 정답: (-7,-3),(1,1)
+    question: "( x-2y=-1,  x^2-2xy-y^2=-2 ) 에서 해를 고르시오.",
+    choices: [
+      "(-7,-3),(1,1)",
+      "(-7,3),(1,-1)",
+      "(0,0),(-1,-1)",
+      "해 없음"
+    ],
+    answer: 0
+  },
+
+  /* 해가 4개인 문제들 */
+  {
+    question: "아래 연립방정식을 만족하는 모든 해를 구하시오. ( x^2 - xy - 2y^2 = 0,  2x^2 + y^2 = 9 )",
+    choices: [
+      "{(2,1),(1,0),(-2,1),(3,4)}",
+      "{(√3,-√3),(0,0),(2,-2),(-3,-1)}",
+      "{(-2,-1),(1,2),(-√3,-√3),(-1,1)}",
+      "{(2,1),(-2,-1),(√3,-√3),(-√3,√3)}"
+    ],
+    answer: 3
+  },
+  {
+    question: "( x^2 + xy - 2y^2 = 0,  x^2 + y^2 = 10 ) 의 모든 해를 구하시오.",
+    choices: [
+      "{(√5,√5),(3,1),(-1,-3),(0,2)}",
+      "{(-2√2,√2),(1,1),(5,1),(2,-3)}",
+      "{(2√2,-√2),(3,4),(1,-2),(4,0)}",
+      "{(√5,√5),(-√5,-√5),(2√2,-√2),(-2√2,√2)}"
+    ],
+    answer: 3
+  },
+  {
+    question: "이 연립방정식을 만족하는 해를 모두 찾으시오. ( x^2 - 2xy - 3y^2 = 0,  x^2 + y^2 = 10 )",
+    choices: [
+      "{(3,1),(2,1),(5,5),(-1,-2)}",
+      "{(0,0),(4,3),(5,-5),(1,2)}",
+      "{(√5,-√5),(3,-2),(2,-3),(-1,1)}",
+      "{(3,1),(-3,-1),(√5,-√5),(-√5,√5)}"
+    ],
+    answer: 3
+  },
+  {
+    question: "( x^2 + xy - 2y^2 = 0,  x^2 + y^2 = 10 ) 의 모든 해를 구하시오.",
+    choices: [
+      "{(√5,√5),(3,1),(-1,-3),(0,2)}",
+      "{(-2√2,√2),(1,1),(5,1),(2,-3)}",
+      "{(2√2,-√2),(3,4),(1,-2),(4,0)}",
+      "{(√5,√5),(-√5,-√5),(2√2,-√2),(-2√2,√2)}"
+    ],
+    answer: 3
+  },
+  {
+    question: "다음 ( x^2 - 6xy + 5y^2 = 0,  x^2 + y^2 = 26 ) 를 만족하는 해 4개는?",
+    choices: [
+      "{(5,1),(1,1),(2,0),(-3,-2)}",
+      "{(√13,√13),(4,-1),(1,5),(0,√13)}",
+      "{(-5,-1),(3,4),(1,-5),(2,2)}",
+      "{(5,1),(-5,-1),(√13,√13),(-√13,-√13)}"
+    ],
+    answer: 3
+  },
+  {
+    question: "연립방정식 ( 3x^2 + 5y - 2x = 8,  x^2 + 2y - x = 2 ) 에서 (x,y)는?",
+    choices: [
+      "(2,0),(-3,-5)",
+      "(2,0)",
+      "(-3,-5)",
+      "해 없음"
+    ],
+    answer: 0
+  }
+];
+
+/* 전역 변수 */
+let playerName = "";
+let difficulty = "";
+let timeLimit = 0;
+let scorePerQuestion = 0;
+let currentQuestionIndex = 0;
+let lives = 3;
+let score = 0;
+let totalElapsedSeconds = 0;
+let intervalID = null;
+let energyIntervalID = null;
+let questionOrder = [];
+let currentEnergy = 100;
+
+/* 배열 섞기 */
+function shuffleArray(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+}
+
+/* 화면 요소 */
+const welcomeScreen = document.getElementById("welcomeScreen");
+const difficultyScreen = document.getElementById("difficultyScreen");
+const gameScreen = document.getElementById("gameScreen");
+const endScreen = document.getElementById("endScreen");
+
+const playerNameInput = document.getElementById("playerNameInput");
+const submitNameBtn = document.getElementById("submitNameBtn");
+
+const livesLabel = document.getElementById("livesLabel");
+const scoreLabel = document.getElementById("scoreLabel");
+const timeLabel = document.getElementById("timeLabel");
+
+const energyBarContainer = document.getElementById("energyBarContainer");
+const energyBarFill = document.getElementById("energyBarFill");
+
+const questionText = document.getElementById("questionText");
+const choicesArea = document.getElementById("choicesArea");
+const feedback = document.getElementById("feedback");
+const nextBtn = document.getElementById("nextBtn");
+
+const scoreSubmitBtn = document.getElementById("scoreSubmitBtn");
+const endTitle = document.getElementById("endTitle");
+const endMessage = document.getElementById("endMessage");
+
+/*---------------------------
+  이름 입력
+---------------------------*/
+submitNameBtn.addEventListener("click", () => {
+  const nameVal = playerNameInput.value.trim();
+  if (nameVal === "") {
+    alert("이름을 입력해주세요.");
+    return;
+  }
+  playerName = nameVal;
+  welcomeScreen.classList.add("hidden");
+  difficultyScreen.classList.remove("hidden");
+});
+
+/*---------------------------
+  난이도 선택
+---------------------------*/
+document.querySelectorAll(".difficulty-button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const level = btn.getAttribute("data-level");
+    difficulty = level;
+    if (level === "top") {
+      timeLimit = 20;
+      scorePerQuestion = 20;
+    } else if (level === "high") {
+      timeLimit = 30;
+      scorePerQuestion = 15;
+    } else if (level === "mid") {
+      timeLimit = 40;
+      scorePerQuestion = 13;
+    } else {
+      // 하: 시간제한 없음
+      timeLimit = 0;
+      scorePerQuestion = 10;
+    }
+    difficultyScreen.classList.add("hidden");
+    startGame();
+  });
+});
+
+/*---------------------------
+  게임 시작
+---------------------------*/
+function startGame() {
+  gameScreen.classList.remove("hidden");
+  lives = 3;
+  score = 0;
+  totalElapsedSeconds = 0;
+  currentQuestionIndex = 0;
+
+  scoreLabel.textContent = "점수: 0";
+  livesLabel.textContent = "남은 기회 : 3";
+  timeLabel.textContent = "전체 경과 시간: 0초";
+
+  questionOrder = Array.from({ length: QUESTIONS.length }, (_, i) => i);
+  shuffleArray(questionOrder);
+
+  if (intervalID) clearInterval(intervalID);
+  intervalID = setInterval(() => {
+    totalElapsedSeconds++;
+    timeLabel.textContent = `전체 경과 시간: ${totalElapsedSeconds}초`;
+  }, 1000);
+
+  showNextQuestion();
+}
+
+/*---------------------------
+  다음 문제 표시
+---------------------------*/
+function showNextQuestion() {
+  feedback.textContent = "";
+  feedback.style.color = "#000000";
+  nextBtn.classList.add("hidden");
+
+  if (energyIntervalID) {
+    clearInterval(energyIntervalID);
+    energyIntervalID = null;
+  }
+
+  if (currentQuestionIndex >= QUESTIONS.length) {
+    endGame("축하합니다!", "모든 문제를 풀었습니다.");
+    return;
+  }
+
+  const qIdx = questionOrder[currentQuestionIndex];
+  if (qIdx === undefined) {
+    endGame("오류", "문제를 불러올 수 없습니다.");
+    return;
+  }
+  const problem = QUESTIONS[qIdx];
+
+  questionText.innerHTML = `<p>${problem.question}</p>`;
+  choicesArea.innerHTML = "";
+  
+  // 답안을 클릭하면 한 번만 처리되도록 버튼들을 생성
+  problem.choices.forEach((choice, i) => {
+    const ansBtn = document.createElement("button");
+    ansBtn.className = "answer-button";
+    ansBtn.innerHTML = choice;
+    ansBtn.onclick = () => handleAnswer(qIdx, i);
+    choicesArea.appendChild(ansBtn);
+  });
+
+  if (timeLimit === 0) {
+    energyBarContainer.classList.add("hidden");
+  } else {
+    energyBarContainer.classList.remove("hidden");
+    currentEnergy = 100;
+    updateEnergyBar();
+
+    const step = 100 / (timeLimit * 5);
+    energyIntervalID = setInterval(() => {
+      currentEnergy -= step;
+      if (currentEnergy <= 0) {
+        currentEnergy = 0;
+        updateEnergyBar();
+        clearInterval(energyIntervalID);
+        lives--;
+        if (lives <= 0) {
+          endGame("게임 종료", "시간 초과로 인해 기회를 모두 잃었습니다.");
+          return;
+        }
+        livesLabel.textContent = `남은 기회 : ${lives}`;
+        const correctIndex = problem.answer;
+        feedback.textContent =
+          "시간 초과입니다! 정답은 " + problem.choices[correctIndex] + " 입니다.";
+        nextBtn.classList.remove("hidden");
+        nextBtn.onclick = () => {
+          currentQuestionIndex++;
+          showNextQuestion();
+        };
+      } else {
+        updateEnergyBar();
+      }
+    }, 200);
+  }
+}
+
+/*---------------------------
+  에너지바 갱신
+---------------------------*/
+function updateEnergyBar() {
+  energyBarFill.style.width = currentEnergy + "%";
+}
+
+/*---------------------------
+  답안 처리
+---------------------------*/
+function handleAnswer(qIdx, choiceIdx) {
+  // 한 번 답변이 선택되면 추가 클릭 방지를 위해 답안 버튼들을 비활성화
+  const answerButtons = choicesArea.querySelectorAll("button.answer-button");
+  answerButtons.forEach(btn => btn.disabled = true);
+
+  if (energyIntervalID) {
+    clearInterval(energyIntervalID);
+    energyIntervalID = null;
+  }
+
+  const problem = QUESTIONS[qIdx];
+  const correctChoice = problem.answer;
+
+  if (choiceIdx === correctChoice) {
+    feedback.textContent = "정답입니다!";
+    score += scorePerQuestion;
+    scoreLabel.textContent = `점수: ${score}`;
+  } else {
+    feedback.textContent =
+      "오답입니다! 정답은 " + problem.choices[correctChoice] + " 입니다.";
+    lives--;
+    if (lives <= 0) {
+      endGame("게임 종료", "기회를 모두 잃었습니다.");
+      return;
+    }
+    livesLabel.textContent = `남은 기회 : ${lives}`;
+  }
+
+  // 정답 또는 오답이 확인된 후에만 "다음 문제" 버튼이 활성화됨
+  nextBtn.classList.remove("hidden");
+  nextBtn.onclick = () => {
+    currentQuestionIndex++;
+    showNextQuestion();
+  };
+}
+
+/*---------------------------
+  게임 종료
+---------------------------*/
+function endGame(title, msg) {
+  if (intervalID) clearInterval(intervalID);
+  if (energyIntervalID) clearInterval(energyIntervalID);
+
+  gameScreen.classList.add("hidden");
+  endTitle.textContent = title;
+  endMessage.textContent = msg + ` 최종 점수: ${score}점.`;
+  endScreen.classList.remove("hidden");
+}
+
+/*---------------------------
+  점수 전송
+---------------------------*/
+scoreSubmitBtn.addEventListener("click", () => {
+  saveData("연립방정식의 풀이(1)", playerName, score, totalElapsedSeconds);
+});
+</script>
+</body>
+</html>
